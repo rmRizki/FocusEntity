@@ -13,35 +13,70 @@ import ARKit
 import Combine
 
 extension FocusEntity {
-
+    
     // MARK: Helper Methods
-
+    
     /// Update the position of the focus square.
     internal func updatePosition() {
-        // Average using several most recent positions.
-        recentFocusEntityPositions = Array(recentFocusEntityPositions.suffix(10))
+        guard let arView = self.arView else { return }
 
-        // Move to average of recent positions to avoid jitter.
-        let average = recentFocusEntityPositions.reduce(
-            SIMD3<Float>.zero, { $0 + $1 }
-        ) / Float(recentFocusEntityPositions.count)
-        self.position = average
+        // Get the center point of the screen
+        let centerPoint = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
+
+        // Perform the raycast
+        let results = arView.raycast(from: centerPoint, allowing: .estimatedPlane, alignment: .any)
+
+        if let result = results.first {
+            // Get the camera's transform
+            let cameraTransform = arView.cameraTransform
+            let cameraPosition = cameraTransform.translation
+
+            // Get the position of the hit test result in world space
+            let hitPosition = result.worldTransform.translation
+
+            // Calculate the distance from the camera to the hit point
+            let direction = hitPosition - cameraPosition
+            let distance = simd_length(direction)
+
+            // Extract the forward vector from the camera's transform
+            let forwardVector = -simd_float3(cameraTransform.matrix.columns.2.x,
+                                             cameraTransform.matrix.columns.2.y,
+                                             cameraTransform.matrix.columns.2.z)
+
+            // Position the focus entity at fixed X and Y, dynamic Z
+            let focusPosition = cameraPosition + (forwardVector * distance)
+
+            // Set the position
+            self.position = focusPosition
+
+        } else {
+            // No hit result - set to default distance
+            let defaultDistance: Float = 1.0 // Adjust this value as needed
+
+            let cameraTransform = arView.cameraTransform
+            let cameraPosition = cameraTransform.translation
+            let forwardVector = -simd_float3(cameraTransform.matrix.columns.2.x,
+                                             cameraTransform.matrix.columns.2.y,
+                                             cameraTransform.matrix.columns.2.z)
+            let focusPosition = cameraPosition + (forwardVector * defaultDistance)
+            self.position = focusPosition
+        }
     }
-
-    #if canImport(ARKit)
+    
+#if canImport(ARKit)
     /// Update the transform of the focus square to be aligned with the camera.
     internal func updateTransform(raycastResult: ARRaycastResult) {
         self.updatePosition()
-
+        
         if state != .initializing {
             updateAlignment(for: raycastResult)
         }
     }
-
+    
     internal func updateAlignment(for raycastResult: ARRaycastResult) {
-
+        
         var targetAlignment = raycastResult.worldTransform.orientation
-
+        
         // Determine current alignment
         var alignment: ARPlaneAnchor.Alignment?
         if let planeAnchor = raycastResult.anchor as? ARPlaneAnchor {
@@ -55,19 +90,19 @@ extension FocusEntity {
         } else if raycastResult.targetAlignment == .vertical {
             alignment = .vertical
         }
-
+        
         // add to list of recent alignments
         if alignment != nil {
             self.recentFocusEntityAlignments.append(alignment!)
         }
-
+        
         // Average using several most recent alignments.
         self.recentFocusEntityAlignments = Array(self.recentFocusEntityAlignments.suffix(20))
-
+        
         let alignCount = self.recentFocusEntityAlignments.count
         let horizontalHistory = recentFocusEntityAlignments.filter({ $0 == .horizontal }).count
         let verticalHistory = recentFocusEntityAlignments.filter({ $0 == .vertical }).count
-
+        
         // Alignment is same as most of the history - change it
         if alignment == .horizontal && horizontalHistory > alignCount * 3/4 ||
             alignment == .vertical && verticalHistory > alignCount / 2 ||
@@ -82,7 +117,7 @@ extension FocusEntity {
             // Alignment is different than most of the history - ignore it
             return
         }
-
+        
         // Change the focus entity's alignment
         if isChangingAlignment {
             // Uses interpolation.
@@ -92,8 +127,8 @@ extension FocusEntity {
             orientation = targetAlignment
         }
     }
-    #endif
-
+#endif
+    
     internal func normalize(_ angle: Float, forMinimalRotationTo ref: Float) -> Float {
         // Normalize angle in steps of 90 degrees such that the rotation to the other angle is minimal
         var normalized = angle
@@ -106,7 +141,7 @@ extension FocusEntity {
         }
         return normalized
     }
-
+    
     internal func getCamVector() -> (position: SIMD3<Float>, direciton: SIMD3<Float>)? {
         guard let camTransform = self.arView?.cameraTransform else {
             return nil
@@ -114,8 +149,8 @@ extension FocusEntity {
         let camDirection = camTransform.matrix.columns.2
         return (camTransform.translation, -[camDirection.x, camDirection.y, camDirection.z])
     }
-
-    #if canImport(ARKit)
+    
+#if canImport(ARKit)
     /// - Parameters:
     /// - Returns: ARRaycastResult if an existing plane geometry or an estimated plane are found, otherwise nil.
     internal func smartRaycast() -> ARRaycastResult? {
@@ -129,7 +164,7 @@ extension FocusEntity {
                 allowing: target, alignment: .any
             )
             let results = self.arView?.session.raycast(rcQuery) ?? []
-
+            
             // Check for a result matching target
             if let result = results.first(
                 where: { $0.target == target }
@@ -137,8 +172,8 @@ extension FocusEntity {
         }
         return nil
     }
-    #endif
-
+#endif
+    
     /// Uses interpolation between orientations to create a smooth `easeOut` orientation adjustment animation.
     internal func performAlignmentAnimation(to newOrientation: simd_quatf) {
         // Interpolate between current and target orientations.
@@ -146,7 +181,7 @@ extension FocusEntity {
         // This length creates a normalized vector (of length 1) with all 3 components being equal.
         self.isChangingAlignment = self.shouldContinueAlignAnim(to: newOrientation)
     }
-
+    
     func shouldContinueAlignAnim(to newOrientation: simd_quatf) -> Bool {
         let testVector = simd_float3(repeating: 1 / sqrtf(3))
         let point1 = orientation.act(testVector)
@@ -155,8 +190,8 @@ extension FocusEntity {
         // Stop interpolating when the rotations are close enough to each other.
         return vectorsDot < 0.999
     }
-
-    #if canImport(ARKit)
+    
+#if canImport(ARKit)
     /**
      Reduce visual size change with distance by scaling up when close and down when far away.
      
@@ -165,14 +200,36 @@ extension FocusEntity {
      for a distance 1.5 m distance (estimated distance when looking at the floor).
      */
     internal func scaleBasedOnDistance(camera: ARCamera?) -> Float {
+        //        guard let camera = camera else { return 1.0 }
+        //
+        //        let distanceFromCamera = simd_length(self.convert(position: .zero, to: nil) - camera.transform.translation)
+        //        if distanceFromCamera < 0.7 {
+        //            return distanceFromCamera / 0.7
+        //        } else {
+        //            return 0.25 * distanceFromCamera + 0.825
+        //        }
+        
         guard let camera = camera else { return 1.0 }
-
-        let distanceFromCamera = simd_length(self.convert(position: .zero, to: nil) - camera.transform.translation)
-        if distanceFromCamera < 0.7 {
-            return distanceFromCamera / 0.7
-        } else {
-            return 0.25 * distanceFromCamera + 0.825
-        }
+        
+        // Define scaling parameters
+        let minDistance: Float = 0.2   // Minimum distance for scaling
+        let maxDistance: Float = 1.5   // Maximum distance for scaling
+        let minScale: Float = 1.2      // Maximum scale (when close)
+        let maxScale: Float = 0.8      // Minimum scale (when far)
+        
+        // Calculate the distance from the camera to the focus entity
+        let distanceFromCamera = simd_length(self.position - camera.transform.translation)
+        
+        // Clamp the distance between minDistance and maxDistance
+        let clampedDistance = max(min(distanceFromCamera, maxDistance), minDistance)
+        
+        // Normalize the distance to a 0–1 range
+        let normalizedDistance = (clampedDistance - minDistance) / (maxDistance - minDistance)
+        
+        // Calculate the smooth scale using a cosine function for smooth transition
+        let smoothScale = minScale + (maxScale - minScale) * (1 - cos(normalizedDistance * .pi)) / 2
+        
+        return smoothScale
     }
-    #endif
+#endif
 }
