@@ -15,14 +15,6 @@ import Combine
 extension FocusEntity {
     
     // MARK: Helper Methods
-    func countEntities(in entity: Entity) -> Int {
-        var count = 1 // Count the current entity
-        for child in entity.children {
-            count += countEntities(in: child) // Recursively count child entities
-        }
-        return count
-    }
-    
     /// Update the position of the focus square.
     internal func updatePosition() {
         guard let arView = self.arView else { return }
@@ -71,7 +63,6 @@ extension FocusEntity {
             self.position = focusPosition
         }
         
-        print( arView.scene.anchors.count )
         if arView.scene.anchors.count > 5 {
             if let pointEntity = arView.scene.findEntity(named: "Point")  {
                 // Convert positions to world coordinates
