@@ -15,6 +15,13 @@ import Combine
 extension FocusEntity {
     
     // MARK: Helper Methods
+    func countEntities(in entity: Entity) -> Int {
+        var count = 1 // Count the current entity
+        for child in entity.children {
+            count += countEntities(in: child) // Recursively count child entities
+        }
+        return count
+    }
     
     /// Update the position of the focus square.
     internal func updatePosition() {
@@ -26,6 +33,8 @@ extension FocusEntity {
         // Perform the raycast
         let results = arView.raycast(from: centerPoint, allowing: .estimatedPlane, alignment: .any)
 
+        var focusPosition: SIMD3<Float>
+        
         if let result = results.first {
             // Get the camera's transform
             let cameraTransform = arView.cameraTransform
@@ -44,7 +53,7 @@ extension FocusEntity {
                                              cameraTransform.matrix.columns.2.z)
 
             // Position the focus entity at fixed X and Y, dynamic Z
-            let focusPosition = cameraPosition + (forwardVector * distance)
+            focusPosition = cameraPosition + (forwardVector * distance)
 
             // Set the position
             self.position = focusPosition
@@ -58,9 +67,39 @@ extension FocusEntity {
             let forwardVector = -simd_float3(cameraTransform.matrix.columns.2.x,
                                              cameraTransform.matrix.columns.2.y,
                                              cameraTransform.matrix.columns.2.z)
-            let focusPosition = cameraPosition + (forwardVector * defaultDistance)
+            focusPosition = cameraPosition + (forwardVector * defaultDistance)
             self.position = focusPosition
         }
+        
+        print( arView.scene.anchors.count )
+        if arView.scene.anchors.count > 5 {
+            if let pointEntity = arView.scene.findEntity(named: "Point")  {
+                // Convert positions to world coordinates
+                let focusWorldPosition = self.convert(position: .zero, to: nil)
+                let pointWorldPosition = pointEntity.convert(position: .zero, to: nil)
+
+                // Use x and y coordinates for snapping
+                let focusXY = SIMD2<Float>(focusWorldPosition.x, focusWorldPosition.y)
+                let pointXY = SIMD2<Float>(pointWorldPosition.x, pointWorldPosition.y)
+
+                let deltaXY = focusXY - pointXY
+                let distanceXY = simd_length(deltaXY)
+
+                let threshold: Float = 0.05 // Adjust threshold as needed (e.g., 10 cm)
+
+                if distanceXY < threshold {
+                    // Snap to 'Point' entity's world position
+                    self.position = pointWorldPosition
+                } else {
+                    // Set position as calculated
+                    self.position = focusPosition
+                }
+            } else {
+                // Set position as calculated
+                self.position = focusPosition
+            }
+        }
+        
     }
     
 #if canImport(ARKit)
