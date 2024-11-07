@@ -5,13 +5,12 @@ import PackageDescription
 
 let package = Package(
     name: "FocusEntity",
-    platforms: [.iOS(.v13), .macOS(.v10_15)],
+    platforms: [.iOS(.v15)],
     products: [
         .library(name: "FocusEntity", targets: ["FocusEntity"])
     ],
     dependencies: [],
     targets: [
         .target(name: "FocusEntity", dependencies: [])
-    ],
-    swiftLanguageVersions: [.v5]
+    ]
 )

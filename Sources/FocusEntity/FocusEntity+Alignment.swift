@@ -18,42 +18,65 @@ extension FocusEntity {
     /// Update the position of the focus square.
     internal func updatePosition() {
         guard let arView = self.arView else { return }
-
+        
         // Get the center point of the screen
         let centerPoint = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
-
+        
         // Perform the raycast
         let results = arView.raycast(from: centerPoint, allowing: .estimatedPlane, alignment: .any)
-
+        
         var focusPosition: SIMD3<Float>
         
         if let result = results.first {
+            if let cursorEntity = self.positioningEntity.children.first as? ModelEntity, var innerDotEntity = arView.scene.findEntity(named: "CursorInnerPointer") as? ModelEntity{
+                
+                var material = UnlitMaterial(color: .white)
+                material.blending = .opaque
+                innerDotEntity.model?.materials = [material]
+                
+                if var material = cursorEntity.model?.materials.first as? UnlitMaterial {
+                    material.blending = .transparent(opacity: 1.0)
+                    cursorEntity.model?.materials[0] = material
+                }
+            }
             // Get the camera's transform
             let cameraTransform = arView.cameraTransform
             let cameraPosition = cameraTransform.translation
-
+            
             // Get the position of the hit test result in world space
             let hitPosition = result.worldTransform.translation
-
+            
             // Calculate the distance from the camera to the hit point
             let direction = hitPosition - cameraPosition
             let distance = simd_length(direction)
-
+            
             // Extract the forward vector from the camera's transform
             let forwardVector = -simd_float3(cameraTransform.matrix.columns.2.x,
                                              cameraTransform.matrix.columns.2.y,
                                              cameraTransform.matrix.columns.2.z)
-
+            
             // Position the focus entity at fixed X and Y, dynamic Z
             focusPosition = cameraPosition + (forwardVector * distance)
-
+            
             // Set the position
             self.position = focusPosition
-
+            
         } else {
             // No hit result - set to default distance
+            if let cursorEntity = self.positioningEntity.children.first as? ModelEntity, var innerDotEntity = arView.scene.findEntity(named: "CursorInnerPointer") as? ModelEntity{
+                
+                var material = UnlitMaterial(color: .white)
+                material.blending = .transparent(opacity: 0.0)
+                innerDotEntity.model?.materials = [material]
+                
+                if var material = cursorEntity.model?.materials.first as? UnlitMaterial {
+                    material.blending = .transparent(opacity: 0.0)
+                    cursorEntity.model?.materials[0] = material
+                }
+            }
+            
             let defaultDistance: Float = 1.0 // Adjust this value as needed
-
+            
             let cameraTransform = arView.cameraTransform
             let cameraPosition = cameraTransform.translation
             let forwardVector = -simd_float3(cameraTransform.matrix.columns.2.x,
@@ -63,34 +86,39 @@ extension FocusEntity {
             self.position = focusPosition
         }
         
+        var tempIsLocked = false
         if arView.scene.anchors.count > 5 {
-            if let pointEntity = arView.scene.findEntity(named: "Point")  {
-                // Convert positions to world coordinates
-                let focusWorldPosition = self.convert(position: .zero, to: nil)
-                let pointWorldPosition = pointEntity.convert(position: .zero, to: nil)
-
-                // Use x and y coordinates for snapping
-                let focusXY = SIMD2<Float>(focusWorldPosition.x, focusWorldPosition.y)
-                let pointXY = SIMD2<Float>(pointWorldPosition.x, pointWorldPosition.y)
-
-                let deltaXY = focusXY - pointXY
-                let distanceXY = simd_length(deltaXY)
-
-                let threshold: Float = 0.05 // Adjust threshold as needed (e.g., 10 cm)
-
-                if distanceXY < threshold {
-                    // Snap to 'Point' entity's world position
-                    self.position = pointWorldPosition
+            if let cursorEntity = arView.scene.findEntity(named: "CursorInnerPointer") as? ModelEntity{
+                if let pointEntity = arView.scene.findEntity(named: "Point"){
+                    let focusWorldPosition = self.convert(position: .zero, to: nil)
+                    let pointWorldPosition = pointEntity.convert(position: .zero, to: nil)
+                    
+                    let focusXY = SIMD2<Float>(focusWorldPosition.x, focusWorldPosition.y)
+                    let pointXY = SIMD2<Float>(pointWorldPosition.x, pointWorldPosition.y)
+                    
+                    let deltaXYZ = focusWorldPosition - pointWorldPosition
+                    let distanceXYZ = simd_length(deltaXYZ)
+                    
+                    let threshold: Float = 0.05
+                    
+                    if distanceXYZ < threshold {
+                        cursorEntity.position = pointEntity.convert(position: .zero, to: self.positioningEntity)
+                        tempIsLocked = true
+                    } else {
+                        cursorEntity.position = SIMD3(0,0,0)
+                        tempIsLocked = false
+                    }
                 } else {
-                    // Set position as calculated
-                    self.position = focusPosition
+                    cursorEntity.position = SIMD3(0,0,0)
+                    tempIsLocked = false
                 }
-            } else {
-                // Set position as calculated
-                self.position = focusPosition
             }
         }
         
+        if(tempIsLocked != self.isLocked){
+            self.isLocked = tempIsLocked
+            self.triggerHapticFeedback()
+        }
     }
     
 #if canImport(ARKit)
@@ -263,3 +291,4 @@ extension FocusEntity {
     }
 #endif
 }
+

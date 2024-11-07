@@ -32,6 +32,9 @@ public struct FocusEntityComponent: Component {
         /// Default style of FocusEntity. Box that's open when not on a plane, closed when on one.
         /// - color: Color of the FocusEntity lines, default: `FocusEntityComponent.defaultColor`
         case classic(color: Material.Color = FocusEntityComponent.defaultColor)
+        case inner(color: Material.Color = FocusEntityComponent.defaultColor)
+        case outer(color: Material.Color = FocusEntityComponent.defaultColor)
+
         /// Style that changes based on state of the FocusEntity
         /// - onColor: Color when FocusEntity is tracking on a known surface.
         /// - offColor: Color when FocusEntity is tracking, but the exact surface isn't known.
@@ -50,6 +53,13 @@ public struct FocusEntityComponent: Component {
         switch self.style {
         case .classic(let color):
             return ClassicStyle(color: color)
+        
+        case .inner(let color):
+            return ClassicStyle(color: color)
+        
+        case .outer(let color):
+            return ClassicStyle(color: color)
+        
         default:
             return nil
         }
