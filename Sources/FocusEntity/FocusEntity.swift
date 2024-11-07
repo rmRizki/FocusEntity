@@ -8,6 +8,7 @@
 
 import Foundation
 import RealityKit
+import CoreHaptics
 #if canImport(RealityFoundation)
 import RealityFoundation
 #endif
@@ -93,7 +94,9 @@ public extension FocusEntityDelegate {
 open class FocusEntity: Entity, HasAnchoring, HasFocusEntity {
 
     internal weak var arView: ARView?
-
+    internal var hapticEngine: CHHapticEngine?
+    public var isLocked: Bool = false
+    
     /// For moving the FocusEntity to a whole new ARView
     /// - Parameter view: The destination `ARView`
     public func moveTo(view: ARView) {
@@ -297,7 +300,17 @@ open class FocusEntity: Entity, HasAnchoring, HasFocusEntity {
             guard let classicStyle = self.focus.classicStyle
             else { return }
             self.setupClassic(classicStyle)
+        case .inner:
+            guard let classicStyle = self.focus.classicStyle
+            else { return }
+            self.setupInner(classicStyle)
+        case .outer(color: let color):
+            guard let classicStyle = self.focus.classicStyle
+            else { return }
+            self.setupOuter(classicStyle)
         }
+        
+        setupHapticEngine()
     }
 
     required public init() {
@@ -372,6 +385,10 @@ open class FocusEntity: Entity, HasAnchoring, HasFocusEntity {
             if self.onPlane {
                 self.onPlaneAnimation(newPlane: newPlane)
             } else { self.offPlaneAniation() }
+        case .inner:
+            self.coloredStateChanged()
+        case .outer:
+            self.coloredStateChanged()
         }
     }
 
@@ -396,4 +413,34 @@ open class FocusEntity: Entity, HasAnchoring, HasFocusEntity {
         self.state = .tracking(raycastResult: result, camera: camera)
     }
     #endif
+    
+    // MARK: HAPTIC
+    func setupHapticEngine() {
+        // Check if the device supports haptics
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
+
+        do {
+            hapticEngine = try CHHapticEngine()
+            try hapticEngine?.start()
+        } catch {
+            print("Failed to create or start the haptic engine: \(error)")
+        }
+    }
+    
+    func triggerHapticFeedback() {
+        guard let hapticEngine = hapticEngine else { return }
+
+        // Define a simple haptic pattern
+        let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.5)
+        let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5)
+        let event = CHHapticEvent(eventType: .hapticTransient, parameters: [intensity, sharpness], relativeTime: 0)
+
+        do {
+            let pattern = try CHHapticPattern(events: [event], parameters: [])
+            let player = try hapticEngine.makePlayer(with: pattern)
+            try player.start(atTime: CHHapticTimeImmediate)
+        } catch {
+            print("Failed to play haptic pattern: \(error)")
+        }
+    }
 }
